@@ -202,10 +202,10 @@ export default function SolarSoilingDashboard() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3 text-amber-400">
             <Sun className="h-8 w-8" />
-            SolarSoiling AI Dashboard
+            SOLARCARE
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            ต้องล้างแผงโซลาร์หรือยัง และล้างตอนนี้คุ้มไหม — Vision AI + Beer-Lambert Law + พยากรณ์อากาศ
+            ต้องล้างแผงโซลาร์หรือยัง และล้างตอนนี้คุ้มไหม
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
