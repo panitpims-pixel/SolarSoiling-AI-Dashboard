@@ -1,17 +1,24 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Sun, CheckCircle2, RefreshCw, CloudRain, TrendingDown, Wrench, Activity,
-  Upload, Loader2, AlertTriangle, MapPin, Settings, Leaf
+  Upload, Loader2, AlertTriangle, MapPin, Settings, Leaf, X
 } from 'lucide-react';
-import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
-} from 'recharts';
 
 import { analyzePanelImage, fetchWeatherData, getUserLocation, DEFAULT_LOCATION } from '@/lib/apiService';
 import { calculateFullSolarAnalysis, DEFAULT_SYSTEM_CAPACITY_KW } from '@/lib/solarEngine';
 
+// โหลดคอมโพเนนต์กราฟแบบ Dynamic Import (ปิด SSR) เพื่อเพิ่มความเร็วหน้าเว็บ
+const SolarRainChart = dynamic(() => import('../components/SolarRainChart'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full w-full bg-slate-800/40 animate-pulse rounded-xl flex items-center justify-center text-xs text-slate-500">
+      กำลังโหลดกราฟพยากรณ์...
+    </div>
+  )
+});
 const SETTINGS_KEY = 'solar-dashboard-settings-v1';
 const DEFAULT_SETTINGS = {
   capacityKw: String(DEFAULT_SYSTEM_CAPACITY_KW),
@@ -19,7 +26,6 @@ const DEFAULT_SETTINGS = {
   cleaningCost: '1000'
 };
 
-// ชื่อคลาส Tailwind ต้องเขียนให้ครบ ห้ามต่อสตริงแบบ dynamic
 const STATUS_STYLES = {
   green: {
     box: 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200',
@@ -43,9 +49,8 @@ const STATUS_STYLES = {
   }
 };
 
-const card = 'bg-slate-800/80 border border-slate-700/60 p-5 rounded-xl shadow-lg';
-const inputCls =
-  'w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm text-slate-100';
+const cardCls = 'bg-slate-800/80 border border-slate-700/60 p-5 rounded-xl shadow-lg';
+const inputCls = 'w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm text-slate-100 transition-colors';
 
 const thaiNum = (n, d = 0) =>
   Number(n).toLocaleString('th-TH', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -140,7 +145,6 @@ export default function SolarSoilingDashboard() {
       cleaningCostBaht: toPositive(settings.cleaningCost, 1000),
       rainProbability: weather?.rainProbability ?? null,
       rainMm24h: weather?.rainMm24h ?? null,
-      // ถ้ามีรังสีจริงใช้ค่าจริง ไม่งั้นให้ engine ใช้ค่าเฉลี่ย
       sunHoursPerDay: weather?.sunHours24h > 0 ? weather.sunHours24h : undefined,
       soilingType: aiResult ? `${aiResult.soilingCategory} ${aiResult.soilingType}` : ''
     });
@@ -158,9 +162,23 @@ export default function SolarSoilingDashboard() {
     [weather]
   );
 
-  // ---- อัปโหลดรูป ----
+  // ---- การจัดการอัปโหลดรูปภาพ ----
   const openFilePicker = () => {
     if (!isAnalyzing) fileInputRef.current?.click();
+  };
+
+  const handleClearImage = (e) => {
+    e?.stopPropagation();
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setSelectedImage(null);
+    setAiResult(null);
+    setErrorMessage('');
+    setSoilingLoss(null);
+    setSource(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleImageSelect = async (e) => {
@@ -181,7 +199,7 @@ export default function SolarSoilingDashboard() {
       const result = await analyzePanelImage(file);
       setAiResult(result);
       if (Number.isFinite(result?.soilingLoss)) {
-        setSoilingLoss(result.soilingLoss); // 0 = สะอาด เป็นค่าที่ถูกต้อง
+        setSoilingLoss(result.soilingLoss);
         setSource('ai');
       }
     } catch (err) {
@@ -196,7 +214,7 @@ export default function SolarSoilingDashboard() {
   const lowConfidence = Number.isFinite(aiResult?.confidence) && aiResult.confidence < 0.5;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-6">
+    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-800 pb-6">
         <div>
@@ -205,7 +223,7 @@ export default function SolarSoilingDashboard() {
             SOLARCARE
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            ต้องล้างแผงโซลาร์หรือยัง และล้างตอนนี้คุ้มไหม
+            ระบบวิเคราะห์คราบฝุ่นและการคุ้มทุนการล้างแผงโซลาร์เซลล์ด้วย AI
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
@@ -216,7 +234,7 @@ export default function SolarSoilingDashboard() {
           <button
             onClick={() => loadWeather(true)}
             disabled={isLoading}
-            className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-slate-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition text-sm"
+            className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-slate-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition text-sm shadow-md"
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             อัปเดตพยากรณ์
@@ -225,12 +243,12 @@ export default function SolarSoilingDashboard() {
       </div>
 
       {/* ตั้งค่าระบบ */}
-      <div className={`${card} mb-8`}>
+      <div className={`${cardCls} mb-8`}>
         <h2 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2">
           <Settings className="h-5 w-5 text-slate-400" />
           ข้อมูลระบบของคุณ
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
           <label className="text-xs text-slate-400 space-y-1">
             <span>กำลังติดตั้งรวม (kW)</span>
             <input type="number" min="0" step="0.1" inputMode="decimal" value={settings.capacityKw} onChange={setField('capacityKw')} className={inputCls} />
@@ -261,8 +279,8 @@ export default function SolarSoilingDashboard() {
       </div>
 
       {/* การ์ดสรุป */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        <div className={card}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        <div className={cardCls}>
           <div className="flex justify-between items-center text-slate-400 mb-2">
             <span className="text-sm font-medium">อัตราสูญเสียจากคราบฝุ่น</span>
             <TrendingDown className="h-5 w-5 text-rose-400" />
@@ -289,12 +307,12 @@ export default function SolarSoilingDashboard() {
                 setSource('manual');
               }}
               aria-label="ปรับอัตราสูญเสียเอง"
-              className="w-full mt-3 accent-rose-400"
+              className="w-full mt-3 accent-rose-400 cursor-pointer"
             />
           )}
         </div>
 
-        <div className={card}>
+        <div className={cardCls}>
           <div className="flex justify-between items-center text-slate-400 mb-2">
             <span className="text-sm font-medium">กำลังผลิตที่สูญเสีย</span>
             <Sun className="h-5 w-5 text-amber-400" />
@@ -318,7 +336,7 @@ export default function SolarSoilingDashboard() {
           )}
         </div>
 
-        <div className={card}>
+        <div className={cardCls}>
           <div className="flex justify-between items-center text-slate-400 mb-2">
             <span className="text-sm font-medium">โอกาสฝนตก 24 ชม.</span>
             <CloudRain className="h-5 w-5 text-sky-400" />
@@ -340,7 +358,7 @@ export default function SolarSoilingDashboard() {
           )}
         </div>
 
-        <div className={`border p-5 rounded-xl shadow-lg ${status ? status.box : 'bg-slate-800/80 border-slate-700/60 text-slate-300'}`}>
+        <div className={`border p-5 rounded-xl shadow-lg transition-all ${status ? status.box : 'bg-slate-800/80 border-slate-700/60 text-slate-300'}`}>
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm font-medium">ข้อเสนอแนะการล้างแผง</span>
             {status ? status.icon : <Wrench className="h-5 w-5 text-slate-500" />}
@@ -353,14 +371,14 @@ export default function SolarSoilingDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* กราฟพยากรณ์ฝนจริง */}
-        <div className={`lg:col-span-2 ${card} p-6`}>
+        {/* กราฟพยากรณ์ฝน */}
+        <div className={`lg:col-span-2 ${cardCls} p-6`}>
           <h2 className="text-lg font-bold text-slate-200 mb-1 flex items-center gap-2">
             <CloudRain className="h-5 w-5 text-sky-400" />
             พยากรณ์ฝน 7 วัน (Open-Meteo)
           </h2>
           <p className="text-xs text-slate-500 mb-4">
-            ใช้ดูว่าฝนจะมาเมื่อไร — ฝนที่ล้างฝุ่นได้จริงควรมีปริมาณตั้งแต่ ~5 mm ขึ้นไป
+            ฝนที่ล้างฝุ่นได้จริงควรมีปริมาณตั้งแต่ ~5 mm ขึ้นไป
           </p>
           <div className="h-72 w-full">
             {chartData.length === 0 ? (
@@ -368,24 +386,13 @@ export default function SolarSoilingDashboard() {
                 {isLoading ? 'กำลังโหลดพยากรณ์...' : 'ไม่มีข้อมูลพยากรณ์'}
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="day" stroke="#94a3b8" />
-                  <YAxis yAxisId="left" domain={[0, 100]} stroke="#94a3b8" unit="%" />
-                  <YAxis yAxisId="right" orientation="right" stroke="#94a3b8" unit=" mm" />
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }} />
-                  <Legend />
-                  <Bar yAxisId="right" dataKey="mm" name="ปริมาณฝน (mm)" fill="#38bdf8" fillOpacity={0.6} radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="left" type="monotone" dataKey="prob" name="โอกาสฝนตกสูงสุด (%)" stroke="#fbbf24" strokeWidth={2} />
-                </ComposedChart>
-              </ResponsiveContainer>
+              <SolarRainChart data={chartData} />
             )}
           </div>
         </div>
 
-        {/* อัปโหลดรูป */}
-        <div className={`${card} p-6 flex flex-col justify-between`}>
+        {/* อัปโหลดรูป & ผลตรวจ Vision AI */}
+        <div className={`${cardCls} p-6 flex flex-col justify-between`}>
           <div>
             <h2 className="text-lg font-bold text-slate-200 mb-2 flex items-center gap-2">
               <Upload className="h-5 w-5 text-indigo-400" />
@@ -413,8 +420,19 @@ export default function SolarSoilingDashboard() {
                 <div className="relative w-full h-36">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={selectedImage} alt="ภาพแผงโซลาร์ที่อัปโหลด" className="w-full h-full object-cover rounded-lg" />
+                  
+                  {!isAnalyzing && (
+                    <button
+                      onClick={handleClearImage}
+                      title="ลบรูปภาพ"
+                      className="absolute top-2 right-2 p-1.5 bg-slate-950/80 hover:bg-rose-600 text-slate-200 hover:text-white rounded-full transition-colors shadow-lg"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+
                   {isAnalyzing && (
-                    <div className="absolute inset-0 bg-slate-950/70 flex flex-col items-center justify-center text-indigo-300 text-xs gap-2 rounded-lg">
+                    <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm flex flex-col items-center justify-center text-indigo-300 text-xs gap-2 rounded-lg">
                       <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
                       กำลังวิเคราะห์ภาพ...
                     </div>
@@ -461,9 +479,6 @@ export default function SolarSoilingDashboard() {
               <span>แบบจำลอง:</span>
               <span className="text-slate-200">Beer-Lambert (T = e<sup>−k·d</sup>)</span>
             </div>
-            <p className="text-[11px] text-slate-500">
-              ค่าสัมประสิทธิ์การดูดกลืน k ตั้งไว้ 0.05 เป็นค่าสมมติ ควรสอบเทียบกับข้อมูลผลิตไฟจริงของระบบคุณ
-            </p>
           </div>
         </div>
       </div>
